@@ -1,0 +1,122 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mongo-secret
+type: Opaque
+data:
+  mongo-user: U2hhcmRlbmR1TWlzaHJhMjI=  # Ensure this is the correct base64 encoded value for your MongoDB username
+  mongo-pass: U2hhcmRlbmR1TWlzaHJhMjI=  # Ensure this is the correct base64 encoded value for your MongoDB password
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongo-deployment
+  labels:
+    app: mongo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongo
+  template:
+    metadata:
+      labels:
+        app: mongo
+    spec:
+      containers:
+      - name: mongo
+        image: mongo 
+        ports:
+        - containerPort: 27017
+        env:
+        - name: MONGO_INITDB_ROOT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mongo-secret
+              key: mongo-user
+        - name: MONGO_INITDB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mongo-secret
+              key: mongo-pass
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo-service
+spec:
+  selector:
+    app: mongo
+  ports:
+    - protocol: TCP
+      port: 27017
+      targetPort: 27017
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongo-config
+data:
+  mongo-url: mongo-service  # Reference the MongoDB service
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapp-deployment
+  labels:
+    app: webapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: webapp  # This selector should match the labels in the pod template
+  template:
+    metadata:
+      labels:
+        app: webapp  # Ensure this label matches the selector
+    spec:
+      containers:
+      - name: mongo-express
+        image: mongo-express  # Ensure this is the correct image
+        ports:
+        - containerPort: 8081
+        env:
+        - name: ME_CONFIG_MONGODB_ADMINUSERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mongo-secret  # Corrected: Changed to match Secret name
+              key: mongo-user  # Ensure this key exists in the Secret
+        - name: ME_CONFIG_MONGODB_ADMINPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mongo-secret  # Corrected: Changed to match Secret name
+              key: mongo-pass  # Corrected: Changed to match the correct key
+        - name: ME_CONFIG_MONGODB_URL  # Ensure your app uses this variable for the MongoDB connection
+          valueFrom:
+            configMapKeyRef:
+              name: mongo-config
+              key: mongo-url
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapp-service
+spec:
+  type: NodePort
+  selector:
+    app: webapp  # This should match the labels in the pod template
+  ports:
+    - protocol: TCP
+      port: 8081  # Port that the service will expose
+      targetPort: 8081  # Port on the container
+      nodePort: 30200  # NodePort for external access
